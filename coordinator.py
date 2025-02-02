@@ -25,7 +25,6 @@ def coordinator(stop):
             print("\033[91m[ERREUR][coordinator] Impossible de se connecter au processus display, arrêt du programme\033[0m")
             stop.set()
 
-
         # Création des listes d'attente pour chaque direction
         try:
             nq = []
