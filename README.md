@@ -52,7 +52,7 @@ python3 main.py
 
 **Q. Le programme ne se lance pas**
 ```
-R. Essayez de modifier les valeurs de la liste process du fichier main.py à 1
+R. Activez tous les scripts dans la section "SCRIPTS À ACTIVER"
 R. Vérifiez que vous avez bien installé toutes le bibliothèques requises
 ```
 
@@ -64,6 +64,7 @@ R. Passez la variable DEBUG à True dans le fichier common.py, cela forcera l'af
 **Q. Le programme fonctionne mais l'interface ne fonctionne pas / n'est pas mise à jour**
 ```
 R. Vérifiez que l'adresse du socket définie dans le fichier common.py est valide et que le port sélectionné n'est pas déjà en cours d'utilisation
+R. Vous pouvez utiliser DEBUG_MSG pour vérifier l'existence du socket et son bon fonctionnement
 ```
 
 **Q. Je n'arrive pas à installer sysv_ipc (ou une autre bibliothèque)**
