@@ -52,7 +52,8 @@ def priority_traffic_gen(stop):
                 print("\033[91m[ERREUR][ntg] Échec de la génération des coordonnées initiales\033[0m")
 
             try:
-                v = common.Vehicle(formatted_id, 1, src, dst, x, y)
+                turn = common.turn(src, dst)
+                v = common.Vehicle(formatted_id, 1, src, dst, x, y, turn)
                 if common.DEBUG:
                     print(f"\033[92m[DEBUG][ptg] L'objet a été créé avec succès\033[0m")
             except:

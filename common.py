@@ -4,12 +4,25 @@ import math as m
 
 ##################################################
 #                                                #
-#          PARAMÈTRES DE LA SIMULATION           #
+#              PARAMÈTRES GÉNÉRAUX               #
 #                                                #
 ##################################################
 
 # DEBUG MODE
 DEBUG = True
+
+# SCRIPTS À ACTIVER
+lights = 1
+normal_traffic_gen = 1
+priority_traffic_gen = 0
+coordinator = 1
+display = 1
+
+##################################################
+#                                                #
+#          PARAMÈTRES DE LA SIMULATION           #
+#                                                #
+##################################################
 
 # Défintion des constantes d'affichage
 CANVAS_SIZE = 800
@@ -21,14 +34,19 @@ YELLOW_ON = '#FFFF00'
 YELLOW_OFF = '#444400'
 
 # Définition des constantes globales
-DEFAULT_LIGHT_DURATION = 3
+DEFAULT_LIGHT_DURATION = 8
 NORMAL_SPAWN_INTERVAL = 2
 PRIORITY_SPAWN_INTERVAL = 8
 AFTER_PRIORITY_DURATION = 1
-DURATION_BETWEEN_SWITCH = 1
+DURATION_BETWEEN_SWITCH = 2
 NORMAL_SPEED = 1
 PRIORITY_SPEED = 3
 DIRECTIONS = ['N', 'E', 'S', 'W']
+
+# Table de calcul des priorités ! NE PAS MODIFIER !
+ORDER = ['right', 'straight', 'left']
+# Délai avant nouveau calcul de positions ! NE PAS MODIFIER !
+COORDINATOR_DELAY = 0.05
 
 # Constante d'initialisation des feux (0 = NS_GREEN, 1 = EW_GREEN)
 INIT_LIGHTS_STATE = 0
@@ -52,14 +70,41 @@ PRIORITY_KEY = 5
 HOST = '127.0.0.1'
 PORT = 9999
 
+# Délai avant première tentative de connexion de coordinator à display
+TIME_BEFORE_CONNECTION_ATTEMPT = 1
+
+##################################################
+#                                                #
+#               PARAMÈTRES DE TEST               #
+#                                                #
+##################################################
+
+# DEBUG MESSAGE SEND TEST SERVER/CLIENT
+DEBUG_MSG = False
+
+# OBSERVATEUR DE VARIABLES
+DEBUG_VARIABLES = False
+# /!\ NE FONCTIONNE PAS POUR LE MOMENT /!\
+# Ne pas passer à True
+
 ##################################################
 #                                                #
 #     ! NE PAS MODIFIER LA PARTIE SUIVANTE !     #
 #                                                #
 ##################################################
 
+# Choix des processus à activer
+PROCESS = [lights, normal_traffic_gen, priority_traffic_gen, coordinator, display]
+
 # Définition de la taille des véhicules sur l'interface graphique
 VEHICLE_SIZE = m.floor(CANVAS_SIZE * 0.03)
+
+# Gestionnaire d'objets partagés
+manager = mp.Manager()
+
+# Calcul des stoplines
+NE_STOPLINE = CANVAS_SIZE / 2 - VEHICLE_SIZE
+SW_STOPLINE = CANVAS_SIZE / 2 + VEHICLE_SIZE
 
 # Création de "message queues" (stockage de l'état des files d'attente)
 try:
@@ -106,17 +151,17 @@ def turn(src, dst):
 
 # Création et initialisation de variables "shared memory" (stockage de l'état des feux)
 if INIT_LIGHTS_STATE == 0:
-    north_light = mp.Value('i', 1) # 1 = vert / 0 = rouge / 2 = orange
-    east_light = mp.Value('i', 0)
-    south_light = mp.Value('i', 1)
-    west_light = mp.Value('i', 0)
+    north_light = manager.Value('i', 1) # 1 = vert / 0 = rouge / 2 = orange
+    east_light = manager.Value('i', 0)
+    south_light = manager.Value('i', 1)
+    west_light = manager.Value('i', 0)
     if DEBUG:
         print("\033[92m[DEBUG][common] Initialisation des feux dans l'état NS_GREEN\033[0m")
 elif INIT_LIGHTS_STATE == 1:
-    north_light = mp.Value('i', 0)
-    east_light = mp.Value('i', 1)
-    south_light = mp.Value('i', 0)
-    west_light = mp.Value('i', 1)
+    north_light = manager.Value('i', 0)
+    east_light = manager.Value('i', 1)
+    south_light = manager.Value('i', 0)
+    west_light = manager.Value('i', 1)
     if DEBUG:
         print("\033[92m[DEBUG][common] Initialisation des feux dans l'état EW_GREEN\033[0m")
 else:
@@ -124,13 +169,15 @@ else:
 
 # Définition de la classe Vehicle
 class Vehicle(object):
-    def __init__(self, id, priority, src, dst, x, y):
+    def __init__(self, id, priority, src, dst, x, y, turn):
         self.id = id
         self.priority = priority
         self.src = src
         self.dst = dst
         self.x = x
         self.y = y
+        self.turn = turn
+        self.status = 0
 
     def get_info(self):
-        return f"ID:{self.id},PRIORITY:{self.priority},ROUTE:{self.src}→{self.dst},CURRENT_POS:({self.x};{self.y})"
+        return f"ID:{self.id},PRIORITY:{self.priority},ROUTE:{self.src}→{self.dst},CURRENT_POS:({self.x};{self.y},TURN:{self.turn},STATUS:{self.status})"

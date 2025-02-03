@@ -1,5 +1,8 @@
 import common
 
+import pickle as p
+
+import threading as th
 import multiprocessing as mp
 import socket as so
 import time as t
@@ -7,38 +10,18 @@ import random as r
 import tkinter as tk
 import math as m
 
+# PROCESSUS DISPLAY
+# Le processus display est responsable de l'affichage de l'interface graphique
+# Il crée également un thread display_manager chargé de la mise à jour des feux et véhicules présents sur le canvas
+
 def display(stop):
-    # Lancement du serveur pour la réception des commandes du processus coordinator
-    # sock = so.socket(so.AF_INET, so.SOCK_STREAM)
-    # sock.setsockopt(so.SOL_SOCKET, so.SO_REUSEADDR, 1) # je ne sais pas trop ce que ça fait, à voir ce qu'on en fait
-    # sock.bind((common.HOST, common.PORT))
-    # sock.listen(1)
-    # sock.setblocking(False)
-    # print(f"[display] Serveur lancé sur {common.HOST}:{common.PORT}")
 
     # Récupération de la taille de la fenêtre
     size = common.CANVAS_SIZE
-    # Calcul de la demi-taille des vehicules
-    vradius = m.floor(common.VEHICLE_SIZE/2)
 
-    # Récupération des couleurs des feux
     ron = common.RED_ON
-    roff = common.RED_OFF
     gon = common.GREEN_ON
-    goff = common.GREEN_OFF
-    yon = common.YELLOW_ON
     yoff = common.YELLOW_OFF
-
-    # Création d'un dictionnaire pour les véhicules
-    vehicles = {}
-
-    # Récupération de l'état des feux
-    north_light = common.north_light.value
-    east_light = common.east_light.value
-    south_light = common.south_light.value
-    west_light = common.west_light.value
-    if common.DEBUG:
-        print(f"\033[92m[DEBUG][display] État des feux récupéré, N={north_light} E={east_light} S={south_light} W={west_light}\033[0m")
     
     # Création de la fenêtre Tkinter
     root = tk.Tk()
@@ -56,6 +39,8 @@ def display(stop):
     canvas.create_rectangle(m.floor(size/2 - size*0.005), 0, m.floor(size/2 + size*0.005), size, fill='white', outline='') # axe nord-sud
     canvas.create_rectangle(0, m.floor(size/2 - size*0.005), size, m.floor(size/2 + size*0.005), fill='white', outline='') # axe est-ouest
     canvas.create_rectangle(m.floor(size/2 - size*0.05), m.floor(size/2 - size*0.05), m.floor(size/2 + size*0.05), m.floor(size/2 + size*0.05), fill='gray', outline='') # carré central
+
+    global tlnr, tlny, tlng, tler, tley, tleg, tlsr, tlsy, tlsg, tlwr, tlwy, tlwg
 
     # FEUX
     # Feu nord
@@ -79,8 +64,27 @@ def display(stop):
     tlwy = canvas.create_oval(m.floor(size/2 + size*0.1), m.floor(size/2 - size*0.09), m.floor(size/2 + size*0.12), m.floor(size/2 - size*0.07), fill=yoff, outline='')
     tlwg = canvas.create_oval(m.floor(size/2 + size*0.13), m.floor(size/2 - size*0.09), m.floor(size/2 + size*0.15), m.floor(size/2 - size*0.07), fill=gon, outline='')
 
+    # Bouton de sortie du programme
+    def exit():
+        stop.set()
+        root.destroy()
+        print("[display] Processus terminé")
+
+    exit_button = tk.Button(root, text="Quitter le programme", command=exit)
+    exit_button.pack(pady=10, padx=10)
+
+    # Lance le thread display_manager en charge de l'affichage des feux et des véhicules
+    # On choisi ici thread plutôt que de lancer un processus supplémentaire car multiprocessing ne fonctionne pas bien avec Tkinter
+    # Le paramètre daemon=True permet de terminer automatiquement le thread lorsque le processus principal se termine (en l'occurence le processus display)
+    t_display_manager = th.Thread(target=display_manager, args=(stop, canvas,), daemon=True)
+    t_display_manager.start()
+
+    root.mainloop()
+
+def display_manager(stop, canvas):
+
     # Change la couleur des feux dans l'interface en fonction de l'état de ces derniers
-    def set_lights(north, east, south, west):
+    def set_lights(canvas, north, east, south, west):
         if north == 1:
             canvas.itemconfig(tlnr, fill=roff)
             canvas.itemconfig(tlny, fill=yoff)
@@ -130,53 +134,109 @@ def display(stop):
             canvas.itemconfig(tlwy, fill=yon)
             canvas.itemconfig(tlwg, fill=goff)
 
-    # Crée un véhicule sur le canvas
-    def summon_vehicle(vehicle):
-        id = vehicle.id
-        priority = vehicle.priority
-        src = vehicle.src
-        dst = vehicle.dst
-        x = vehicle.x
-        y = vehicle.y
-        color = 'blue'
-        if priority == 1:
-            color = 'red'
-        
-        # Crée le véhicule sur le canvas
-        display_id = canvas.create_rectangle(m.floor(x - vradius), m.floor(y - vradius), m.floor(x + vradius), m.floor(y + vradius), fill=color, outline='')
+    def draw_vehicle(canvas, x, y, color):
+        canvas.create_rectangle(m.floor(x - vradius), m.floor(y - vradius), m.floor(x + vradius), m.floor(y + vradius), fill=color, outline='')
 
-        # Ajoute le véhicule au dictionnaire des véhicules présents sur le canvas
-        vehicles[id] = {
-            'priority': priority,
-            'src': src,
-            'dst': dst,
-            'x': x,
-            'y': y,
-            'status': 0, # 0 = avant le passage de l'intersection / 1 = après le passage de l'intersection
-            'display_id': display_id
-        }
-
-    # def movement_update(vehicles):
-    #     # Initialisation de la liste des véhicules à retirer du canvas
-    #     destroy = []
-
-    #     # Récupération de tous les véhicules présents sur le canvas et mise à jour de leur position
-    #     for id, info in vehicules.items()
-        
-
-    # initialiser les feux
+    # Lancement du serveur pour la réception des commandes du processus coordinator
     try:
-        set_lights(north_light, east_light, south_light, west_light)
+        with so.socket(so.AF_INET, so.SOCK_STREAM) as server:
+            server.bind((common.HOST, common.PORT))
+            server.listen(1)
+            client, addr = server.accept()
+            with client:
+                if common.DEBUG:
+                    print(f"[DEBUG][display] Connexion établie avec {addr}")
+                data = client.recv(1024)
+
+                # Récupération des couleurs des feux
+                ron = common.RED_ON
+                roff = common.RED_OFF
+                gon = common.GREEN_ON
+                goff = common.GREEN_OFF
+                yon = common.YELLOW_ON
+                yoff = common.YELLOW_OFF
+
+                # Calcul de la demi-taille des vehicules
+                vradius = m.floor(common.VEHICLE_SIZE/2)
+
+                while not stop.is_set():
+
+                    # Mise à jour de l'état des feux - AFFICHAGE
+                    north_light = common.north_light.value
+                    east_light = common.east_light.value
+                    south_light = common.south_light.value
+                    west_light = common.west_light.value
+                    # print(f'FEUX=[{north_light},{east_light},{south_light},{west_light}]')
+                    # t.sleep(0.2)
+                    try:
+                        set_lights(canvas, north_light, east_light, south_light, west_light)
+                    except:
+                        print(f"\033[91m[ERREUR][display] Erreur lors de la modification des feux, arrêt du programme\033[0m")
+                        stop.set()
+                    
+                    # Mise à jour de la position des véhicules - AFFICHAGE
+                    try:
+                        data = client.recv(1024)  # Recevoir les données du coordinateur
+                        if data:
+                            try:
+                                debug_message = data.decode()
+                                if debug_message:
+                                    print(f"\033[92m[DEBUG][display] Message reçu: {debug_message}\033[0m")
+                                try:
+                                    vehicle_data = p.loads(data)
+                                except:
+                                    print(f"\033[91m[ERREUR][display] Échec de la désérialisation des données de position\033[0m")
+                                x = int(vehicle_data[0])
+                                y = int(vehicle_data[1])
+                                color = vehicle_data[2]
+                                draw_vehicle(canvas, x, y, color)  # Dessiner le véhicule sur le canvas
+                            except:
+                                print(f"\033[91m[ERREUR][display] Impossible de récupérer le message de test\033[0m")
+                    except BlockingIOError:
+                        pass # On passe si il n'y a aucune donnée à lire
+                    except:
+                        print(f"\033[91m[ERREUR][display] Erreur lors de la réception des données du coordinateur, arrêt du programme\033[0m")
+                        stop.set()
+                
+
+        # sock = so.socket(so.AF_INET, so.SOCK_STREAM)
+        # sock.setsockopt(so.SOL_SOCKET, so.SO_REUSEADDR, 1) # je ne sais pas trop ce que ça fait, à voir ce qu'on en fait
+        # sock.bind((common.HOST, common.PORT))
+        # sock.listen(1)
+        # sock.setblocking(False)
+        print(f"[display] Serveur lancé sur {common.HOST}:{common.PORT}")
     except:
-        print("\033[91m[ERREUR][display] Erreur lors du chargement de la configuration des feux\033[0m")
-
-    # Bouton de sortie du programme
-    def exit():
+        print(f"\033[91m[ERREUR][display] Impossible de lancer le serveur sur {common.HOST}:{common.PORT}, arrêt du programme\033[0m")
         stop.set()
-        root.destroy()
-        print("[display] Processus terminé")
 
-    exit_button = tk.Button(root, text="Quitter le programme", command=exit)
-    exit_button.pack(pady=10, padx=10)
-
-    root.mainloop()
+    # while not stop.is_set():
+    #     # Mise à jour de l'état des feux - AFFICHAGE
+    #     north_light = common.north_light.value
+    #     east_light = common.east_light.value
+    #     south_light = common.south_light.value
+    #     west_light = common.west_light.value
+    #     try:
+    #         set_lights(north_light, east_light, south_light, west_light)
+    #     except:
+    #         print(f"\033[91m[ERREUR][dissplay] Erreur lors de la modification des feux, arrêt du programme\033[0m")
+    #         stop.set()
+        
+    #     # Mise à jour de la position des véhicules - AFFICHAGE
+    #     try:
+    #         data = sock.recv(1024)  # Recevoir les données du coordinateur
+    #         if data:
+    #             vehicle_data = data.decode()
+    #             x = int(vehicle_data[0])
+    #             y = int(vehicle_data[1])
+    #             color = vehicle_data[2]
+    #             draw_vehicle(x, y, color)  # Dessiner le véhicule sur le canvas
+    #     except BlockingIOError:
+    #         pass # On passe si il n'y a aucune donnée à lire
+    #     # except:
+    #     #     print(f"\033[91m[ERREUR][display] Erreur lors de la réception des données du coordinateur, arrêt du programme\033[0m")
+    #     #     stop.set()
+    
+    server.close()
+    client.close()
+    if common.DEBUG:
+        print("\033[92m[DEBUG][display] Serveur arrêté avec succès\033[0m")

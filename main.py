@@ -4,20 +4,26 @@ import common
 import multiprocessing as mp
 # Importe le module sysv_ipc pour utiliser les méthodes IPC
 import sysv_ipc as ipc
-# Importe les différents modules nécessaires ainsi que leurs procesus
-import normal_traffic_gen as ntg
-import priority_traffic_gen as ptg
-import lights as l
-import coordinator as c
-import display as d
+
+process = common.PROCESS
+
+# Importe les différents modules nécessaires ainsi que leurs processus en fonction de la variable process
+if process[0] == 1:
+    import lights as l
+if process[1] == 1:
+    import normal_traffic_gen as ntg
+if process[2] == 1:
+    import priority_traffic_gen as ptg
+if process[3] == 1:
+    import coordinator as c
+if process[4] == 1:
+    import display as d
+if common.DEBUG_VARIABLES:
+    import variables as v
 # Importe les modules time, random et math
 import time as t
 import random as r
 import math as m
-
-# Activation des processus
-process = [0,1,0,1,0]
-# Ordre des processus: lights, normal_traffic_gen, priority_traffic_gen, coordinator, display
 
 def main():
 
@@ -62,13 +68,21 @@ def main():
         except:
             print("\033[91m[ERREUR][main] Échec de la création du processus coordinator\033[0m")
 
-    # 5. Processus d'affichage et de calcul de la position des véhicules
+    # 5. Processus d'affichage
     if process[4] == 1:
         try:
             p_display = mp.Process(target=d.display, args=(stop,), name="display")
             p_display.start()
         except:
             print("\033[91m[ERREUR][main] Échec de la création du processus display\033[0m")
+
+    # Observateur de variables
+    if common.DEBUG_VARIABLES:
+        try:
+            p_variables = mp.Process(target=v.variables, args=(stop,), name="variables")
+            p_variables.start()
+        except:
+            print("\033[91m[ERREUR][main] Échec de la création du processus variables\033[0m")
 
     try:
         while True:
@@ -86,7 +100,7 @@ def main():
         common.priority_queue.remove()
         # On arrête tous les processus
         stop.set()
-        print("[main] Tous les processus ont été terminés avec succès")
+        print("[main] Arrêt du programme")
 
 if __name__ == "__main__":
     main()
