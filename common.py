@@ -35,11 +35,11 @@ YELLOW_OFF = '#444400'
 
 # Définition des constantes globales
 DEFAULT_LIGHT_DURATION = 8
-NORMAL_SPAWN_INTERVAL = 3
+NORMAL_SPAWN_INTERVAL = 1
 PRIORITY_SPAWN_INTERVAL = 20
 AFTER_PRIORITY_DURATION = 3
 DURATION_BETWEEN_SWITCH = 2
-NORMAL_SPEED = 1 # attention ne doit pas être trop élevé (>5 = mauvaise idée !!!)
+NORMAL_SPEED = 4 # attention ne doit pas être trop élevé (>5 = mauvaise idée !!!)
 DIRECTIONS = ['N', 'E', 'S', 'W']
 
 # Table de calcul des priorités ! NE PAS MODIFIER !
@@ -102,7 +102,7 @@ ALWAYS_GREEN = False
 ##################################################
 
 # Délai avant nouveau calcul de positions ! NE PAS MODIFIER !
-COORDINATOR_DELAY = 0.01
+COORDINATOR_DELAY = 0.03
 
 # Stopline threshold
 STOPLINE_THRESHOLD = 10

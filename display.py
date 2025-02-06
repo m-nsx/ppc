@@ -81,9 +81,32 @@ def display(stop):
 
     root.mainloop()
 
+def recvall(sock, n):
+    """
+    Lit exactement n octets depuis le socket ou retourne None si la connexion est fermée.
+    """
+    data = b''
+    while len(data) < n:
+        packet = sock.recv(n - len(data))
+        if not packet:
+            return None
+        data += packet
+    return data
+
+def recv_msg(sock):
+    """
+    Lit un message complet envoyé avec send_msg (un en‐tête de 4 octets indiquant la taille, puis le message).
+    """
+    header = recvall(sock, 4)
+    if header is None:
+        return None
+    msg_len = int.from_bytes(header, byteorder='big')
+    return recvall(sock, msg_len)
+
+
 def display_manager(stop, canvas):
 
-    # Change la couleur des feux dans l'interface en fonction de l'état de ces derniers
+    # Fonction locale pour mettre à jour les feux dans le canvas
     def set_lights(canvas, north, east, south, west):
         if north == 1:
             canvas.itemconfig(tlnr, fill=roff)
@@ -134,14 +157,17 @@ def display_manager(stop, canvas):
             canvas.itemconfig(tlwy, fill=yon)
             canvas.itemconfig(tlwg, fill=goff)
 
+    # Fonction locale pour dessiner un véhicule sur le canvas
     def draw_vehicle(canvas, x, y, color, extension):
         vradius = m.floor(common.VEHICLE_SIZE/2) + extension
-        canvas.create_rectangle(m.floor(x - vradius), m.floor(y - vradius), m.floor(x + vradius), m.floor(y + vradius), fill=color, outline='')
-    
-    # Lancement du serveur pour la réception des commandes du processus coordinator
+        canvas.create_rectangle(m.floor(x - vradius), m.floor(y - vradius),
+                                m.floor(x + vradius), m.floor(y + vradius),
+                                fill=color, outline='')
+
+    # Lancement du serveur socket pour recevoir les messages du coordinator
     try:
         with so.socket(so.AF_INET, so.SOCK_STREAM) as server:
-            server.setsockopt(so.SOL_SOCKET, so.SO_REUSEADDR, 1) # Forcer la recréation d'un socket TCP, même si le socket précédent n'a pas été correctement fermé afin d'éviter les erreurs type : adress already in use
+            server.setsockopt(so.SOL_SOCKET, so.SO_REUSEADDR, 1)
             server.bind((common.HOST, common.PORT))
             server.listen(1)
             client, addr = server.accept()
@@ -149,7 +175,7 @@ def display_manager(stop, canvas):
                 if common.DEBUG:
                     print(f"\033[92m[DEBUG][display] Connexion établie avec {addr}\033[0m")
 
-                # Récupération des constantes de couleurs
+                # Récupération des constantes de couleurs pour les feux
                 ron = common.RED_ON
                 roff = common.RED_OFF
                 gon = common.GREEN_ON
@@ -158,7 +184,7 @@ def display_manager(stop, canvas):
                 yoff = common.YELLOW_OFF
 
                 while not stop.is_set():
-                    # Mise à jour de l'état des feux
+                    # Mise à jour de l'état des feux à partir de la mémoire partagée
                     try:
                         north_light = common.north_light.value
                         east_light  = common.east_light.value
@@ -169,35 +195,31 @@ def display_manager(stop, canvas):
                         print(f"\033[91m[ERREUR][display] Erreur lors de la modification des feux: {e}\033[0m")
                         stop.set()
 
-                    # Lecture des données en provenance du coordinateur
+                    # Lecture d'un message complet en provenance du coordinator
                     try:
-                        data = client.recv(1024)
-                        if data:
-                            # On continue à traiter les données contenues dans le buffer
-                            offset = 0
-                            while offset < len(data):
-                                try:
-                                    vehicle_data = p.loads(data[offset:])
-                                    if isinstance(vehicle_data, (list, tuple)) and len(vehicle_data) >= 3:
-                                        x, y, color, id, extension = vehicle_data[:5]
-                                        draw_vehicle(canvas, x, y, color, extension)
-                                        # Avancer l'offset de la taille des données traitées
-                                        offset += len(p.dumps(vehicle_data))
-                                except p.UnpicklingError:
-                                    # Si on ne peut plus désérialiser, c'est qu'on a traité toutes les données complètes
-                                    break
-                    except BlockingIOError:
-                        pass  # Aucune donnée n'est disponible pour le moment
+                        vehicle_data_bytes = recv_msg(client)
+                        if vehicle_data_bytes is None:
+                            # La connexion a été fermée, on sort de la boucle
+                            break
+
+                        try:
+                            vehicle_data = p.loads(vehicle_data_bytes)
+                            # On attend un message contenant au moins 5 éléments : x, y, color, id, extension
+                            if isinstance(vehicle_data, (list, tuple)) and len(vehicle_data) >= 5:
+                                x, y, color, vid, extension = vehicle_data[:5]
+                                draw_vehicle(canvas, x, y, color, extension)
+                        except Exception as e:
+                            print(f"\033[91m[ERREUR][display] Problème lors de la désérialisation : {e}\033[0m")
                     except Exception as e:
                         print(f"\033[91m[ERREUR][display] Erreur lors de la réception des données: {e}\033[0m")
                         stop.set()
+
+                    canvas.update()
     except Exception as e:
         print(f"\033[91m[ERREUR][display] Impossible de lancer le serveur sur {common.HOST}:{common.PORT}: {e}\033[0m")
         stop.set()
 
     print(f"[display] Serveur arrêté")
-    
-    server.shutdown(so.SHUT_RDWR)
-    server.close()
+    # Aucun shutdown ou close supplémentaire n'est nécessaire, le 'with' s'en charge.
     if common.DEBUG:
         print("\033[92m[DEBUG][display] Serveur arrêté avec succès\033[0m")
