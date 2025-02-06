@@ -2,20 +2,21 @@ import common
 
 import time as t
 import signal as sg
+import random as rd
 
-# Création du gestionnaire de signaux pour SIGUSR1 (véhicule prioritaire)
+# Création du gestionnaire de signaux pour SIGINT (véhicule prioritaire)
 def priority_handler(sig, frame):
-    if sig == sg.SIGUSR1:
+    if sig == sg.SIGINT:
         common.PRIORITY_REQUEST = True
-# Initialisation du gestionnaire de signaux SIGUSR1
-sg.signal(sg.SIGUSR1, priority_handler)
+# Initialisation du gestionnaire de signaux SIGINT
+sg.signal(sg.SIGINT, priority_handler)
 
-# Création du gestionnaire de signaux pour SIGUSR2 (fin de passage)
+# Création du gestionnaire de signaux pour SIGTERM (fin de passage)
 def pass_handler(sig, frame):
-    if sig == sg.SIGUSR2:
+    if sig == sg.SIGTERM:
         common.PASS_COMPLETE = True
-# Initialisation du gestionnaire de signaux SIGUSR2
-sg.signal(sg.SIGUSR2, pass_handler)
+# Initialisation du gestionnaire de signaux SIGTERM
+sg.signal(sg.SIGTERM, pass_handler)
 
 # PROCESSUS LIGHTS
 # Le processus lights est responsable de la gestion des feux de circulation
@@ -29,6 +30,13 @@ def lights(stop):
     light_state = common.INIT_LIGHTS_STATE
     ltime = t.time()
 
+    if common.ALWAYS_GREEN:
+        while True:
+            common.north_light.value = 1
+            common.east_light.value = 1
+            common.south_light.value = 1
+            common.west_light.value = 1
+
     while not stop.is_set():
         # Si un signal de véhicule prioritaire est reçu passer en mode prioritaire
         if common.PRIORITY_REQUEST:
@@ -38,33 +46,59 @@ def lights(stop):
             common.south_light.value = 0
             common.west_light.value = 0
             # Récupérer la source du véhicule prioritaire
-            rsrc = common.priority_queue.receive()
+            rsrc, _ = common.priority_queue.receive()
             src = rsrc.decode()
             if common.DEBUG:
-                    print(f"\033[92m[DEBUG][lights] Signal du véhicule prioritaire reçu\033[0m")
+                    print(f"\033[92m[DEBUG][lights] Signal du véhicule prioritaire reçu, priorité à donner à {src}\033[0m")
             # Passer au vert le feu correspondant à la source du véhicule prioritaire
             if src == 'N':
-                common.north_light = 1
+                common.north_light.value = 1
             elif src == 'E':
-                common.east_light = 1
+                common.east_light.value = 1
             elif src == 'S':
-                common.south_light = 1
+                common.south_light.value = 1
             elif src == 'W':
-                common.west_light = 1
+                common.west_light.value = 1
 
             # On attend un signal de fin de passage du véhicule prioritaire pour reprendre le cycle normal
             while common.PASS_COMPLETE is False:
-                pass
+                t.sleep(0.01)
             common.PASS_COMPLETE = False
             if common.DEBUG:
                     print(f"\033[92m[DEBUG][lights] Le véhicule prioritaire a franchi l'intersection\033[0m")
 
             # On attend un certain temps après le passage du véhicule prioritaire
-            t.sleep(common.AFTER_PRIORITY_DURATION)
+            t.sleep(common.AFTER_PRIORITY_DURATION/2)
 
             # On retourne au mode normal
             common.PRIORITY_REQUEST = False
             ltime = t.time()
+
+            alea = rd.randint(0, 1)
+
+            if src == 'N' and alea == 1:
+                common.north_light.value = 2
+            elif src == 'E' and alea == 0:
+                common.east_light.value = 2
+            elif src == 'S' and alea == 1:
+                common.south_light.value = 2
+            elif src == 'W' and alea == 0:
+                common.west_light.value = 2
+
+            if alea == 0:
+                t.sleep(common.AFTER_PRIORITY_DURATION/2)
+                light_state = 0
+                common.north_light.value = 1
+                common.east_light.value = 0
+                common.south_light.value = 1
+                common.west_light.value = 0
+            elif alea == 1:
+                t.sleep(common.AFTER_PRIORITY_DURATION/2)
+                light_state = 1
+                common.north_light.value = 0
+                common.east_light.value = 1
+                common.south_light.value = 0
+                common.west_light.value = 1
 
             continue
 

@@ -134,21 +134,22 @@ def display_manager(stop, canvas):
             canvas.itemconfig(tlwy, fill=yon)
             canvas.itemconfig(tlwg, fill=goff)
 
-    def draw_vehicle(canvas, x, y, color):
+    def draw_vehicle(canvas, x, y, color, extension):
+        vradius = m.floor(common.VEHICLE_SIZE/2) + extension
         canvas.create_rectangle(m.floor(x - vradius), m.floor(y - vradius), m.floor(x + vradius), m.floor(y + vradius), fill=color, outline='')
-
+    
     # Lancement du serveur pour la réception des commandes du processus coordinator
     try:
         with so.socket(so.AF_INET, so.SOCK_STREAM) as server:
+            server.setsockopt(so.SOL_SOCKET, so.SO_REUSEADDR, 1) # Forcer la recréation d'un socket TCP, même si le socket précédent n'a pas été correctement fermé afin d'éviter les erreurs type : adress already in use
             server.bind((common.HOST, common.PORT))
             server.listen(1)
             client, addr = server.accept()
             with client:
                 if common.DEBUG:
-                    print(f"[DEBUG][display] Connexion établie avec {addr}")
-                data = client.recv(1024)
+                    print(f"\033[92m[DEBUG][display] Connexion établie avec {addr}\033[0m")
 
-                # Récupération des couleurs des feux
+                # Récupération des constantes de couleurs
                 ron = common.RED_ON
                 roff = common.RED_OFF
                 gon = common.GREEN_ON
@@ -156,87 +157,47 @@ def display_manager(stop, canvas):
                 yon = common.YELLOW_ON
                 yoff = common.YELLOW_OFF
 
-                # Calcul de la demi-taille des vehicules
-                vradius = m.floor(common.VEHICLE_SIZE/2)
-
                 while not stop.is_set():
-
-                    # Mise à jour de l'état des feux - AFFICHAGE
-                    north_light = common.north_light.value
-                    east_light = common.east_light.value
-                    south_light = common.south_light.value
-                    west_light = common.west_light.value
-                    # print(f'FEUX=[{north_light},{east_light},{south_light},{west_light}]')
-                    # t.sleep(0.2)
+                    # Mise à jour de l'état des feux
                     try:
+                        north_light = common.north_light.value
+                        east_light  = common.east_light.value
+                        south_light = common.south_light.value
+                        west_light  = common.west_light.value
                         set_lights(canvas, north_light, east_light, south_light, west_light)
-                    except:
-                        print(f"\033[91m[ERREUR][display] Erreur lors de la modification des feux, arrêt du programme\033[0m")
+                    except Exception as e:
+                        print(f"\033[91m[ERREUR][display] Erreur lors de la modification des feux: {e}\033[0m")
                         stop.set()
-                    
-                    # Mise à jour de la position des véhicules - AFFICHAGE
-                    try:
-                        data = client.recv(1024)  # Recevoir les données du coordinateur
-                        if data:
-                            try:
-                                debug_message = data.decode()
-                                if debug_message:
-                                    print(f"\033[92m[DEBUG][display] Message reçu: {debug_message}\033[0m")
-                                try:
-                                    vehicle_data = p.loads(data)
-                                except:
-                                    print(f"\033[91m[ERREUR][display] Échec de la désérialisation des données de position\033[0m")
-                                x = int(vehicle_data[0])
-                                y = int(vehicle_data[1])
-                                color = vehicle_data[2]
-                                draw_vehicle(canvas, x, y, color)  # Dessiner le véhicule sur le canvas
-                            except:
-                                print(f"\033[91m[ERREUR][display] Impossible de récupérer le message de test\033[0m")
-                    except BlockingIOError:
-                        pass # On passe si il n'y a aucune donnée à lire
-                    except:
-                        print(f"\033[91m[ERREUR][display] Erreur lors de la réception des données du coordinateur, arrêt du programme\033[0m")
-                        stop.set()
-                
 
-        # sock = so.socket(so.AF_INET, so.SOCK_STREAM)
-        # sock.setsockopt(so.SOL_SOCKET, so.SO_REUSEADDR, 1) # je ne sais pas trop ce que ça fait, à voir ce qu'on en fait
-        # sock.bind((common.HOST, common.PORT))
-        # sock.listen(1)
-        # sock.setblocking(False)
-        print(f"[display] Serveur lancé sur {common.HOST}:{common.PORT}")
-    except:
-        print(f"\033[91m[ERREUR][display] Impossible de lancer le serveur sur {common.HOST}:{common.PORT}, arrêt du programme\033[0m")
+                    # Lecture des données en provenance du coordinateur
+                    try:
+                        data = client.recv(1024)
+                        if data:
+                            # On continue à traiter les données contenues dans le buffer
+                            offset = 0
+                            while offset < len(data):
+                                try:
+                                    vehicle_data = p.loads(data[offset:])
+                                    if isinstance(vehicle_data, (list, tuple)) and len(vehicle_data) >= 3:
+                                        x, y, color, id, extension = vehicle_data[:5]
+                                        draw_vehicle(canvas, x, y, color, extension)
+                                        # Avancer l'offset de la taille des données traitées
+                                        offset += len(p.dumps(vehicle_data))
+                                except p.UnpicklingError:
+                                    # Si on ne peut plus désérialiser, c'est qu'on a traité toutes les données complètes
+                                    break
+                    except BlockingIOError:
+                        pass  # Aucune donnée n'est disponible pour le moment
+                    except Exception as e:
+                        print(f"\033[91m[ERREUR][display] Erreur lors de la réception des données: {e}\033[0m")
+                        stop.set()
+    except Exception as e:
+        print(f"\033[91m[ERREUR][display] Impossible de lancer le serveur sur {common.HOST}:{common.PORT}: {e}\033[0m")
         stop.set()
 
-    # while not stop.is_set():
-    #     # Mise à jour de l'état des feux - AFFICHAGE
-    #     north_light = common.north_light.value
-    #     east_light = common.east_light.value
-    #     south_light = common.south_light.value
-    #     west_light = common.west_light.value
-    #     try:
-    #         set_lights(north_light, east_light, south_light, west_light)
-    #     except:
-    #         print(f"\033[91m[ERREUR][dissplay] Erreur lors de la modification des feux, arrêt du programme\033[0m")
-    #         stop.set()
-        
-    #     # Mise à jour de la position des véhicules - AFFICHAGE
-    #     try:
-    #         data = sock.recv(1024)  # Recevoir les données du coordinateur
-    #         if data:
-    #             vehicle_data = data.decode()
-    #             x = int(vehicle_data[0])
-    #             y = int(vehicle_data[1])
-    #             color = vehicle_data[2]
-    #             draw_vehicle(x, y, color)  # Dessiner le véhicule sur le canvas
-    #     except BlockingIOError:
-    #         pass # On passe si il n'y a aucune donnée à lire
-    #     # except:
-    #     #     print(f"\033[91m[ERREUR][display] Erreur lors de la réception des données du coordinateur, arrêt du programme\033[0m")
-    #     #     stop.set()
+    print(f"[display] Serveur arrêté")
     
+    server.shutdown(so.SHUT_RDWR)
     server.close()
-    client.close()
     if common.DEBUG:
         print("\033[92m[DEBUG][display] Serveur arrêté avec succès\033[0m")

@@ -39,6 +39,8 @@ def main():
             p_lights.start()
             try:
                 common.LIGHTS_PID = p_lights.pid
+                if common.DEBUG:
+                    print(f"\033[92m[DEBUG][main] PID du processus lights récupéré : {common.LIGHTS_PID}\033[0m")
             except:
                 print("\033[91m[ERREUR][main] Échec de la récupération du PID du processus lights\033[0m")
         except:
